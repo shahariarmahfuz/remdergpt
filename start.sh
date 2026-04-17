@@ -1,8 +1,6 @@
 #!/bin/bash
 set -euo pipefail
 
-PORT="${PORT:-10000}"
-
 mkdir -p /home/devuser/.ssh
 chmod 700 /home/devuser/.ssh
 
@@ -14,17 +12,17 @@ else
   echo "WARNING: SSH_PUBLIC_KEY is not set"
 fi
 
-sudo mkdir -p /var/run/sshd
-sudo ssh-keygen -A
-sudo /usr/sbin/sshd
-
-python3 /healthz.py &
+mkdir -p /var/run/sshd
+ssh-keygen -A
+/usr/sbin/sshd
 
 if [ -n "${NGROK_AUTHTOKEN:-}" ]; then
-  ngrok config add-authtoken "${NGROK_AUTHTOKEN}"
-  ngrok tcp 22 --log=stdout &
+  (
+    ngrok config add-authtoken "${NGROK_AUTHTOKEN}" || true
+    ngrok tcp 22 --log=stdout || echo "WARNING: ngrok tunnel failed. Check ngrok dashboard for endpoint/session limits."
+  ) &
 else
   echo "WARNING: NGROK_AUTHTOKEN is not set"
 fi
 
-wait -n
+exec python3 /healthz.py
