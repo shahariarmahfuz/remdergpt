@@ -5,7 +5,7 @@ ENV TERM=xterm-256color
 ENV COLORTERM=truecolor
 
 RUN apt-get update && apt-get install -y \
-    openssh-server sudo curl wget git nano unzip python3 ca-certificates \
+    openssh-server curl wget git nano unzip python3 ca-certificates \
     && rm -rf /var/lib/apt/lists/*
 
 # ngrok install
@@ -16,7 +16,6 @@ RUN curl -fsSL https://bin.equinox.io/c/bNyj1mQVY4c/ngrok-v3-stable-linux-amd64.
 # user + ssh setup
 RUN mkdir -p /var/run/sshd && \
     useradd -m -s /bin/bash -u 1000 devuser && \
-    echo "devuser ALL=(ALL) NOPASSWD:ALL" >> /etc/sudoers && \
     mkdir -p /home/devuser/.ssh && \
     chown -R devuser:devuser /home/devuser/.ssh && \
     chmod 700 /home/devuser/.ssh && \
@@ -70,9 +69,9 @@ else
   echo "WARNING: SSH_PUBLIC_KEY is not set"
 fi
 
-sudo mkdir -p /var/run/sshd
-sudo ssh-keygen -A
-sudo /usr/sbin/sshd
+mkdir -p /var/run/sshd
+ssh-keygen -A
+/usr/sbin/sshd
 
 python3 /healthz.py &
 
@@ -88,9 +87,7 @@ SH
 
 RUN chmod +x /start.sh
 
-USER devuser
 WORKDIR /home/devuser
-
 EXPOSE 10000
 
 CMD ["/start.sh"]
