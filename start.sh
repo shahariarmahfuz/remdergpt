@@ -6,15 +6,13 @@ echo "==> starting container"
 mkdir -p /run/sshd
 mkdir -p /home/devuser/.ssh
 chmod 700 /home/devuser/.ssh
-touch /home/devuser/.ssh/authorized_keys
 
-if [ -n "${SSH_PUBLIC_KEY:-}" ]; then
-  printf '%s\n' "${SSH_PUBLIC_KEY}" > /home/devuser/.ssh/authorized_keys
-  chmod 600 /home/devuser/.ssh/authorized_keys
-  chown -R devuser:devuser /home/devuser/.ssh
-else
-  echo "WARNING: SSH_PUBLIC_KEY is not set"
-fi
+cat > /home/devuser/.ssh/authorized_keys <<'EOF'
+ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIDj5xwV9XcOQO/bOhFgufHwucQoisy9GKP0S9E1I6F/z
+EOF
+
+chmod 600 /home/devuser/.ssh/authorized_keys
+chown -R devuser:devuser /home/devuser/.ssh
 
 ssh-keygen -A
 
@@ -23,12 +21,8 @@ getent passwd devuser || true
 ls -ld /home/devuser /home/devuser/.ssh || true
 ls -l /home/devuser/.ssh || true
 
-echo "==> sshd effective config"
-sshd -T | grep -E 'passwordauthentication|kbdinteractiveauthentication|challengeresponseauthentication|pubkeyauthentication|usepam|permittty|authorizedkeysfile|allowusers|subsystem'
-
 echo "==> starting sshd"
 /usr/sbin/sshd -D -e &
-SSHD_PID=$!
 
 if [ -n "${NGROK_AUTHTOKEN:-}" ]; then
   echo "==> starting ngrok"
