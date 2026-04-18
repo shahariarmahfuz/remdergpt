@@ -15,28 +15,46 @@ RUN apt-get update && apt-get install -y \
     ca-certificates \
     && rm -rf /var/lib/apt/lists/*
 
-# ngrok install
+# ngrok
 RUN curl -fsSL https://bin.equinox.io/c/bNyj1mQVY4c/ngrok-v3-stable-linux-amd64.zip -o /tmp/ngrok.zip \
     && unzip /tmp/ngrok.zip -d /usr/local/bin \
     && rm -f /tmp/ngrok.zip
 
-# SSH user setup
-RUN mkdir -p /run/sshd && \
-    useradd -m -s /bin/bash -u 1000 devuser && \
-    mkdir -p /home/devuser/.ssh && \
-    chown -R devuser:devuser /home/devuser/.ssh && \
-    chmod 700 /home/devuser/.ssh && \
-    printf '%s\n' \
-      'PasswordAuthentication no' \
-      'KbdInteractiveAuthentication no' \
-      'ChallengeResponseAuthentication no' \
-      'PermitRootLogin no' \
-      'PubkeyAuthentication yes' \
-      'PermitTTY yes' \
-      'UsePAM no' \
-      >> /etc/ssh/sshd_config
+# user
+RUN useradd -m -d /home/devuser -s /bin/bash -u 1000 devuser \
+    && mkdir -p /home/devuser/.ssh /run/sshd \
+    && chown -R devuser:devuser /home/devuser \
+    && chmod 700 /home/devuser/.ssh
 
-# health check server for Render Web Service
+# custom sshd config
+RUN cat > /etc/ssh/sshd_config <<'EOF'
+Port 22
+Protocol 2
+AddressFamily any
+ListenAddress 0.0.0.0
+ListenAddress ::
+
+HostKey /etc/ssh/ssh_host_rsa_key
+HostKey /etc/ssh/ssh_host_ecdsa_key
+HostKey /etc/ssh/ssh_host_ed25519_key
+
+PermitRootLogin no
+PasswordAuthentication no
+KbdInteractiveAuthentication no
+ChallengeResponseAuthentication no
+PubkeyAuthentication yes
+UsePAM no
+PermitTTY yes
+X11Forwarding no
+PrintMotd no
+Subsystem sftp internal-sftp
+
+AuthorizedKeysFile .ssh/authorized_keys
+AllowUsers devuser
+LogLevel VERBOSE
+EOF
+
+# render health server
 RUN cat > /healthz.py <<'PY'
 from http.server import BaseHTTPRequestHandler, HTTPServer
 import os
@@ -60,36 +78,7 @@ class Handler(BaseHTTPRequestHandler):
 HTTPServer(("0.0.0.0", PORT), Handler).serve_forever()
 PY
 
-# startup script
-RUN cat > /start.sh <<'SH'
-#!/bin/bash
-set -euo pipefail
-
-mkdir -p /run/sshd
-mkdir -p /home/devuser/.ssh
-chmod 700 /home/devuser/.ssh
-
-if [ -n "${SSH_PUBLIC_KEY:-}" ]; then
-  printf '%s\n' "${SSH_PUBLIC_KEY}" > /home/devuser/.ssh/authorized_keys
-  chmod 600 /home/devuser/.ssh/authorized_keys
-  chown -R devuser:devuser /home/devuser/.ssh
-else
-  echo "WARNING: SSH_PUBLIC_KEY is not set"
-fi
-
-ssh-keygen -A
-/usr/sbin/sshd
-
-if [ -n "${NGROK_AUTHTOKEN:-}" ]; then
-  ngrok config add-authtoken "${NGROK_AUTHTOKEN}" || true
-  ngrok tcp 22 --log=stdout &
-else
-  echo "WARNING: NGROK_AUTHTOKEN is not set"
-fi
-
-exec python3 /healthz.py
-SH
-
+COPY start.sh /start.sh
 RUN chmod +x /start.sh
 
 WORKDIR /home/devuser
