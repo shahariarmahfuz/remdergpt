@@ -1,36 +1,34 @@
 #!/bin/bash
-set -euo pipefail
+set -e
 
-echo "==> starting container"
+# Render Health Check এর জন্য সাধারণ HTTP সার্ভার
+PORT=${PORT:-10000}
+python3 -m http.server $PORT &
 
-mkdir -p /run/sshd
-mkdir -p /home/devuser/.ssh
-chmod 700 /home/devuser/.ssh
+# ইউজারের পাসওয়ার্ড সেট করা (ডিফল্ট: dev123)
+# আপনি চাইলে Render এর Environment Variables থেকে SSH_PASS সেট করে দিতে পারেন
+SSH_PASS=${SSH_PASS:-"dev123"}
+echo "devuser:$SSH_PASS" | chpasswd
+echo "root:$SSH_PASS" | chpasswd
 
-cat > /home/devuser/.ssh/authorized_keys <<'EOF'
-ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIDj5xwV9XcOQO/bOhFgufHwucQoisy9GKP0S9E1I6F/z
-EOF
+# SSH সার্ভার চালু করা
+service ssh start
 
-chmod 600 /home/devuser/.ssh/authorized_keys
-chown -R devuser:devuser /home/devuser/.ssh
-
-ssh-keygen -A
-
-echo "==> devuser info"
-getent passwd devuser || true
-ls -ld /home/devuser /home/devuser/.ssh || true
-ls -l /home/devuser/.ssh || true
-
-echo "==> starting sshd"
-/usr/sbin/sshd -D -e &
-
-if [ -n "${NGROK_AUTHTOKEN:-}" ]; then
-  echo "==> starting ngrok"
-  ngrok config add-authtoken "${NGROK_AUTHTOKEN}" || true
-  ngrok tcp 22 --log=stdout &
+# Ngrok চালু করা (Render এর Environment Variables এ NGROK_AUTHTOKEN দিতে হবে)
+if [ -n "$NGROK_AUTHTOKEN" ]; then
+    echo "Starting Ngrok TCP tunnel..."
+    ngrok config add-authtoken $NGROK_AUTHTOKEN
+    # পোর্ট 22 (SSH) এর জন্য TCP টানেল তৈরি
+    ngrok tcp 22 --log=stdout > /tmp/ngrok.log &
+    
+    sleep 5
+    echo "=========================================="
+    echo "আপনার SSH সার্ভার রেডি! কানেকশন ডিটেইলস জানতে আপনার Ngrok ড্যাশবোর্ডে (Endpoints -> Edges) যান।"
+    echo "ইউজারনেম: devuser"
+    echo "পাসওয়ার্ড: $SSH_PASS"
+    echo "=========================================="
 else
-  echo "WARNING: NGROK_AUTHTOKEN is not set"
+    echo "Error: NGROK_AUTHTOKEN পাওয়া যায়নি! টানেল চালু হচ্ছে না।"
 fi
 
-echo "==> starting health server on PORT=${PORT:-10000}"
-exec python3 /healthz.py
+tail -f /dev/null
